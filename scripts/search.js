@@ -90,12 +90,56 @@
 
      let allData = [];
      
-     // 模拟搜索结果（实际需替换为真实API，如仪器信息网的RSS、品牌官网文章）
-     const mockResults = [
-       { title: '近红外光谱在谷物蛋白质检测中的应用', source: '仪器信息网', date: '2024-05-20', link: 'https://example.com/1' },
-       { title: '基于PLSR的近红外光谱模型优化研究', source: '赛默飞官网', date: '2024-05-19', link: 'https://example.com/2' },
-       { title: '近红外光谱技术在水果糖度检测中的应用', source: '布鲁克官网', date: '2024-05-18', link: 'https://example.com/3' }
-     ];
+// ==================== 配置区 ====================
+const RSS_FEED_URL = 'https://www.instrument.com.cn/rss/news.xml'; // 仪器信息网RSS feed（示例，可替换为其他源）
+
+// ==================== 主函数 ====================
+async function main() {
+  const today = new Date().toLocaleDateString('zh-CN');
+  console.log(`\n=== 开始搜集：${today} ===\n`);
+  fs.mkdirSync(path.dirname(LATEST_FILE), { recursive: true });
+
+  let allData = [];
+
+  try {
+    // 获取RSS feed内容
+    const response = await axios.get(RSS_FEED_URL, {
+      headers: { 'User-Agent': 'NIR-Agent/1.0' },
+      timeout: 30000
+    });
+    const rssContent = response.data;
+
+    // 简单解析RSS（提取title、link、pubDate）
+    const titles = rssContent.match(/<title>(.*?)<\/title>/g) || [];
+    const links = rssContent.match(/<link>(.*?)<\/link>/g) || [];
+    const dates = rssContent.match(/<pubDate>(.*?)<\/pubDate>/g) || [];
+
+    // 提取前5条数据
+    for (let i = 0; i < Math.min(5, titles.length); i++) {
+      const title = titles[i]?.replace(/<title>/g, '').replace(/<\/title>/g, '').trim() || '未提及';
+      const link = links[i]?.replace(/<link>/g, '').replace(/<\/link>/g, '').trim() || '未提及';
+      const date = dates[i]?.replace(/<pubDate>/g, '').replace(/<\/pubDate>/g, '').trim() || '未提及';
+
+      console.log(`处理：${title}`);
+      const content = await fetchUrl(link);
+      if (!content) continue;
+
+      const textContent = extractText(content);
+      const info = extractInfo(title, '仪器信息网', date, textContent);
+      allData.push(info);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 避免请求过快
+    }
+  } catch (error) {
+    console.error('RSS feed获取失败:', error.message);
+  }
+
+  const markdown = generateMarkdownTable(allData);
+  fs.writeFileSync(LATEST_FILE, markdown, 'utf-8');
+  console.log(`已生成汇总文件：${LATEST_FILE}`);
+
+  await uploadToCoze(LATEST_FILE);
+}
+
 
      for (const result of mockResults) {
        console.log(`处理：${result.title}`);
